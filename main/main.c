@@ -113,8 +113,8 @@ void mpu6050_task(void *p) {
         FusionAhrsUpdateNoMagnetometer(&ahrs, g, a, SAMPLE_PERIOD);
         FusionEuler e = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
 
-        float dr = e.angle.roll  - last_roll;
-        float dp = e.angle.pitch - last_pitch;
+        float dr = last_roll - e.angle.roll;
+        float dp = last_pitch - e.angle.pitch;
         last_roll  = e.angle.roll;
         last_pitch = e.angle.pitch;
 
@@ -124,8 +124,8 @@ void mpu6050_task(void *p) {
         dy = (dy>255?255: dy<-255?-255: dy);
 
         event_t ev;
-        ev.axis = 0; ev.val = dx; xQueueSend(xQueuePos, &ev, 0);
-        ev.axis = 1; ev.val = dy; xQueueSend(xQueuePos, &ev, 0);
+        ev.axis = 0; ev.val = dy; xQueueSend(xQueuePos, &ev, 0);
+        ev.axis = 1; ev.val  = -dx;xQueueSend(xQueuePos, &ev, 0);
         if (abs(acceleration[0]) > CLICK_THRESHOLD) {
             if (!clicked) {
                 ev.axis = 2; ev.val = 1;
@@ -143,11 +143,31 @@ void mpu6050_task(void *p) {
     }
 }
 
+void uart_task(void *pvParameters) {
+    uart_init(UART_ID, BAUD_RATE);
+    gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
+    gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
+
+    event_t ev;
+    uint8_t pkt[4];
+
+    while (1) {
+        if (xQueueReceive(xQueuePos, &ev, portMAX_DELAY) == pdTRUE) {
+            pkt[0] = 0xFF;
+            pkt[1] = ev.axis;
+            pkt[2] = ev.val & 0xFF;
+            pkt[3] = (ev.val>>8) & 0xFF;
+            uart_write_blocking(UART_ID, pkt, 4);
+        }
+    }
+}
+
 int main() {
     stdio_init_all();
 
+    xQueuePos = xQueueCreate(32, sizeof(event_t));
     xTaskCreate(mpu6050_task, "mpu6050_Task 1", 8192, NULL, 1, NULL);
-
+    xTaskCreate(uart_task,    "UART",   2048, NULL, 1, NULL);
     vTaskStartScheduler();
 
     while (true)
