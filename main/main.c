@@ -21,9 +21,9 @@
 #define SAMPLE_MS         10
 #define SAMPLE_PERIOD     (SAMPLE_MS/1000.0f)
 
-#define K_ROLL            2.0f
-#define K_PITCH           2.0f
-#define CLICK_THRESHOLD   24576
+#define K_ROLL            15.0f
+#define K_PITCH           15.0f
+#define CLICK_THRESHOLD   8000
 
 const int MPU_ADDRESS = 0x68;
 const int I2C_SDA_GPIO = 4;
@@ -99,33 +99,15 @@ void mpu6050_task(void *p) {
         // leitura da MPU, sem fusao de dados
         mpu6050_read_raw(acceleration, gyro, &temp);
 
-        FusionVector g = {
-            .axis.x = gyro[0]/131.0f,
-            .axis.y = gyro[1]/131.0f,
-            .axis.z = gyro[2]/131.0f
-        };
-        FusionVector a = {
-            .axis.x = acceleration[0]/16384.0f,
-            .axis.y = acceleration[1]/16384.0f,
-            .axis.z = acceleration[2]/16384.0f
-        };
-
-        FusionAhrsUpdateNoMagnetometer(&ahrs, g, a, SAMPLE_PERIOD);
-        FusionEuler e = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
-
-        float dr = last_roll - e.angle.roll;
-        float dp = last_pitch - e.angle.pitch;
-        last_roll  = e.angle.roll;
-        last_pitch = e.angle.pitch;
-
-        int16_t dx = dr * K_ROLL;
-        int16_t dy = dp * K_PITCH;
-        dx = (dx>255?255: dx<-255?-255: dx);
-        dy = (dy>255?255: dy<-255?-255: dy);
+        int16_t dx = acceleration[0] / 1000;
+        int16_t dy = acceleration[1] / 1000;
+        dx = (dx>255?255:(dx<-255?-255:dx));
+        dy = (dy>255?255:(dy<-255?-255:dy));
 
         event_t ev;
-        ev.axis = 0; ev.val = dy; xQueueSend(xQueuePos, &ev, 0);
-        ev.axis = 1; ev.val  = -dx;xQueueSend(xQueuePos, &ev, 0);
+        ev.axis = 0; ev.val = dx; xQueueSend(xQueuePos, &ev, 0);
+        ev.axis = 1; ev.val = dy; xQueueSend(xQueuePos, &ev, 0);
+
         if (abs(acceleration[0]) > CLICK_THRESHOLD) {
             if (!clicked) {
                 ev.axis = 2; ev.val = 1;
@@ -135,9 +117,6 @@ void mpu6050_task(void *p) {
         } else {
             clicked = false;
         }
-        //printf("Acc. X = %d, Y = %d, Z = %d\n", acceleration[0], acceleration[1], acceleration[2]);
-        //printf("Gyro. X = %d, Y = %d, Z = %d\n", gyro[0], gyro[1], gyro[2]);
-        //printf("Temp. = %f\n", (temp / 340.0) + 36.53);
 
         vTaskDelay(pdMS_TO_TICKS(10));
     }
