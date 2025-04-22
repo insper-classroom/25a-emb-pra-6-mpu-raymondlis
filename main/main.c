@@ -92,7 +92,6 @@ void mpu6050_task(void *p) {
     FusionAhrsInitialise(&ahrs);
     
     int16_t acceleration[3], gyro[3], temp;
-    float last_roll = 0, last_pitch = 0;
     bool clicked = false;
 
     while(1) {
